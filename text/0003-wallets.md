@@ -14,7 +14,9 @@ The goal is to improve interoperability between TON-native wallets and multichai
     
 - user-facing import behavior;
     
-- SDK and library import.
+- SDK and library import;
+
+- sub-wallets derivation;
     
 ## 2. Terminology
 
@@ -53,7 +55,7 @@ A TON mnemonic uses:
 
 ```text
 24 words from the BIP39 word list
-KDF: PBKDF2-HMAC-SHA512(words, "TON default seed", 100000)
+KDF: PBKDF2-HMAC-SHA512( HMAC-SHA512(words), "TON default seed", 100000)
 Then Ed25519 key derivation
 ```
 
@@ -63,7 +65,9 @@ Example: https://github.com/toncenter/tonweb-mnemonic
 When creating a new wallet for a user, wallet applications **MAY** use either of the following mnemonic schemes:
 
 1. (Recommended) a 12-word Multichain mnemonic;
+
 or
+
 2. a 24-word TON mnemonic;
 
 Wallet applications **SHOULD NOT** create new wallets using a 24-word Multichain mnemonic. This restriction is intended to reduce ambiguity during import and improve interoperability across the TON ecosystem.
@@ -180,3 +184,21 @@ Both TON-native wallets and multichain wallets began adapting to each other’s 
 However, compatibility across wallet applications is still incomplete. In some cases, accounts created in one wallet cannot be imported correctly into another wallet, or only one of several possible wallet smart contract accounts is shown to the user.
 
 This guideline exists to standardize expected wallet behavior and improve cross-wallet compatibility across the TON ecosystem.
+
+## 11. Subwallets
+
+To generate a set of sub-wallets based on a single mnemonic phrase, it is recommended to use the Multichain Mnemonic with the derivation path `m/44'/607'/{i}'`, where `i` is the subwallet index.
+
+This method is widely used and compatible with other blockchains.
+
+Code example: https://github.com/mytonwallet-org/mytonwallet/blob/2c0ef4ca0fafeab20802a22cf781bb5aa473b953/src/api/chains/ton/auth.ts#L268
+
+## 12. Subwallets Background and Rationale
+
+The TON wallet smart contract includes a `subwalletId` field that could be used to generate multiple subwallets associated with a single key. However, it will be explicitly clear that these subwallets belong to the same key, whereas users typically want a subwallet without such an explicit link. Therefore, this field should not be used for user scenarios; it is intended for reply protection between mainnet and testnet, and service backends may use the ID at their discretion.
+
+As of 2026, the vast majority of wallets that support TON and subwallet generation use the proposed multichain mnemonic and derivation path described in section 11.
+
+An interesting exception is Tonkeeper Pro, which offers its own method for generating sub-wallets from a single mnemonic phrase, with each sub-wallet having its own mnemonic phrase.
+
+However, to ensure compatibility among wallets, we recommend the method described in section 11.
