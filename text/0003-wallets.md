@@ -26,15 +26,23 @@ A **TON mnemonic** is a TON-specific 24-word mnemonic using the BIP39 word list 
 
 A **Multichain mnemonic** is a BIP39 mnemonic used with BIP44 and SLIP-0010 Ed25519 derivation.
 
+A **Rotation mnemonic** is a 24-word mnemonic made of two independent 12-word Multichain mnemonics: an **anchor half** (words 1-12) and a **signing half** (words 13-24).
+
+An **anchor key** is the key pair derived from the anchor half. It determines the wallet account address and authorizes the first replacement of the signing key. It never changes.
+
+A **signing key** is the key pair derived from the signing half. It signs ordinary outgoing messages of the wallet account and is replaced on rotation.
+
+**Rotation** is the replacement of the signing key of a wallet account without changing the account address.
+
 A **wallet account** is a TON blockchain account controlled by a wallet smart contract, such as Wallet V3R1, Wallet V3R2, Wallet V4R2, Wallet V5R1 or other.
 
 A single mnemonic/key pair may correspond to multiple wallet smart contracts and therefore multiple TON blockchain accounts.
 
 ## 3. Mnemonic-to-Key Derivation
 
-Historically, the TON ecosystem has widely used two mnemonic schemes.
+Historically, the TON ecosystem has widely used two mnemonic schemes, described in sections 3.1 and 3.2. Section 3.3 defines a third one, which builds on the first.
 
-Both schemes use the same BIP39 word list, but they differ in how the words are converted into entropy and then into Ed25519 private and public keys.
+All schemes use the same BIP39 word list, but they differ in how the words are converted into entropy and then into Ed25519 private and public keys.
 
 ### 3.1 Multichain Mnemonic
 
@@ -60,6 +68,37 @@ Then Ed25519 key derivation
 ```
 
 Example: https://github.com/toncenter/tonweb-mnemonic
+### 3.3 Rotation Mnemonic
+
+A Rotation mnemonic uses:
+
+```text
+24 words from the BIP39 word list,
+formed as two independent 12-word Multichain mnemonics
+
+words 1-12  -> anchor half  -> anchor key
+words 13-24 -> signing half -> signing key
+
+each half separately:
+BIP39 -> BIP44 -> SLIP-0010 Ed25519
+Derivation path: m/44'/607'/0'
+```
+
+Each half **MUST** be a valid 12-word Multichain mnemonic as defined in section 3.1, including its BIP39 checksum.
+
+Each half **MUST** be converted to a BIP39 seed on its own, from the 12 words of that half only. The 24 words **MUST NOT** be joined and treated as a single BIP39 mnemonic, and the two seeds **MUST NOT** be combined with each other.
+
+Both halves use the same derivation path. The two key pairs differ only because their seeds differ.
+
+| Half   | Words | Key         | Role                                                       |
+|--------|-------|-------------|------------------------------------------------------------|
+| First  | 1-12  | Anchor key  | Determines the wallet account address; authorizes the first rotation |
+| Second | 13-24 | Signing key | Signs ordinary outgoing messages; is replaced on rotation  |
+
+The two halves **MUST** be generated independently, from a cryptographically secure random source. The signing half **MUST NOT** be derived from the anchor half.
+
+Unlike the schemes in sections 3.1 and 3.2, a Rotation mnemonic does not describe a single fixed key: its signing half changes over time while the account address stays the same. Section 13 defines the wallet account behavior that makes this possible.
+
 ## 4. New Wallet Creation: Mnemonic Scheme
 
 When creating a new wallet for a user, wallet applications **MAY** use either of the following mnemonic schemes:
@@ -71,6 +110,8 @@ or
 2. a 24-word TON mnemonic;
 
 Wallet applications **SHOULD NOT** create new wallets using a 24-word Multichain mnemonic. This restriction is intended to reduce ambiguity during import and improve interoperability across the TON ecosystem.
+
+Wallet applications **SHOULD NOT** create new wallets using a Rotation mnemonic either. A Rotation mnemonic is only meaningful for an application that also implements the rotation-capable wallet account of section 13, and in practice it is expected to be produced by a small number of applications.
 
 ## 5. New Wallet Creation: Smart Contract
 
@@ -129,20 +170,23 @@ When importing an existing wallet, wallet applications **SHOULD** allow the user
 
 If the user enters **12 words**, the mnemonic **SHOULD** be treated as a Multichain mnemonic.
 
-If the user enters **24 words**, the wallet application **SHOULD** validate the mnemonic against both supported schemes:
+If the user enters **24 words**, the wallet application **SHOULD** validate the mnemonic against all supported schemes:
 
 1. TON mnemonic validation by checksum;
-    
-2. Multichain/BIP39 mnemonic validation by checksum.
-    
+
+2. Multichain/BIP39 mnemonic validation by checksum;
+
+3. Rotation mnemonic validation by two checksums, one on words 1-12 and one on words 13-24.
+
+Support for Rotation mnemonics is **OPTIONAL**. A wallet application that does not support them **MAY** skip validation 3. Such a phrase then fails validations 1 and 2 and is reported to the user as an invalid mnemonic, which is the expected outcome.
 
 If the 24-word mnemonic is valid only as a TON mnemonic, the wallet application **SHOULD** import it as a TON mnemonic.
 
 If the 24-word mnemonic is valid only as a Multichain mnemonic, the wallet application **SHOULD** import it as a Multichain mnemonic.
 
-In approximately **0.4%** of cases, a 24-word mnemonic may be valid under both the TON mnemonic scheme and the Multichain mnemonic scheme.
+If the 24-word mnemonic is valid only as a Rotation mnemonic, a wallet application that supports Rotation mnemonics **SHOULD** import it as described in section 13.2.
 
-In such cases, the wallet application **SHOULD NOT** choose one scheme silently. Instead, it **SHOULD** derive accounts for both schemes and show the resulting account list to the user for selection.
+Whenever a 24-word phrase is valid under more than one scheme, the wallet application **SHOULD NOT** pick a scheme silently. It **SHOULD** derive the accounts for every scheme that validates and present them to the user for selection, as described in section 7.
 
 ## 9. SDK and Library Requirements
 
@@ -153,7 +197,8 @@ SDKs and wallet libraries **SHOULD** support importing wallets from all of the f
 2. 12-word Multichain mnemonic;
     
 3. 24-word Multichain mnemonic.
-    
+
+SDKs and wallet libraries **MAY** additionally support importing 24-word Rotation mnemonics.
 
 Libraries and SDKs SHOULD use explicit naming conventions that clearly indicate the presence of multiple types of mnemonics within the ecosystem.
 
@@ -195,10 +240,42 @@ Code example: https://github.com/mytonwallet-org/mytonwallet/blob/2c0ef4ca0fafea
 
 ## 12. Subwallets Background and Rationale
 
-The TON wallet smart contract includes a `subwalletId` field that could be used to generate multiple subwallets associated with a single key. However, it will be explicitly clear that these subwallets belong to the same key, whereas users typically want a subwallet without such an explicit link. Therefore, this field should not be used for user scenarios; it is intended for reply protection between mainnet and testnet, and service backends may use the ID at their discretion.
+The TON wallet smart contract includes a `subwalletId` field that could be used to generate multiple subwallets associated with a single key. However, it will be explicitly clear that these subwallets belong to the same key, whereas users typically want a subwallet without such an explicit link. Therefore, this field should not be used for user scenarios; it is intended for replay protection between mainnet and testnet, and service backends may use the ID at their discretion.
 
 As of 2026, the vast majority of wallets that support TON and subwallet generation use the proposed multichain mnemonic and derivation path described in section 11.
 
 An interesting exception is Tonkeeper Pro, which offers its own method for generating sub-wallets from a single mnemonic phrase, with each sub-wallet having its own mnemonic phrase.
 
 However, to ensure compatibility among wallets, we recommend the method described in section 11.
+
+## 13. Rotation Mnemonic: Wallet Account and Key Rotation
+
+Section 13.1 applies to a wallet application that creates and operates rotation wallets. Section 13.2 applies to every wallet application that wants to import them, and is the part the rest of the ecosystem needs.
+
+### 13.1 Account requirements
+
+A Rotation mnemonic requires a wallet smart contract that keeps its current signing public key separately from the values that determine its address.
+
+Such a contract **MUST** satisfy all of the following:
+
+1. The account address **MUST NOT** depend on the current signing public key.
+
+2. The contract stores a current signing public key, and that key **MUST** be the only key accepted for ordinary outgoing messages.
+
+Sections 5 and 6 do not apply to rotation wallets. Wallet V3R1 through V5R1 have no rotatable signing key, and the behavior of a Rotation mnemonic with them is not defined; a wallet application **MUST NOT** deploy a V3R1-V5R1 account from a Rotation mnemonic. 
+
+### 13.2 Import and recovery
+
+When importing a Rotation mnemonic, a wallet application:
+
+1. derives the anchor key from words 1-12 and the signing key from words 13-24, as described in section 3.3;
+
+2. computes the account address from the anchor key, subwallet-id and wallet contract code;
+
+3. reads the account state and compares the stored signing public key with the signing key derived from words 13-24.
+
+If the two match, the phrase is current and the account can be used immediately.
+
+If they do not match, the phrase carries an outdated signing half. The wallet application **SHOULD** treat the mnemonic as invalid.
+
+The contract itself, including its code and subwallet-id, is out of scope for this document.
