@@ -26,7 +26,7 @@ A **TON mnemonic** is a TON-specific 24-word mnemonic using the BIP39 word list 
 
 A **Multichain mnemonic** is a BIP39 mnemonic used with BIP44 and SLIP-0010 Ed25519 derivation.
 
-A **Rotation mnemonic** is a 24-word mnemonic made of two independent 12-word Multichain mnemonics: an **anchor half** (words 1-12) and a **signing half** (words 13-24).
+A **Rotation mnemonic** is a 24-word mnemonic made up of two 12-word Multichain mnemonics: an **anchor half** (words 1-12) and a **signing half** (words 13-24).
 
 An **anchor key** is the key pair derived from the anchor half. It determines the wallet account address and authorizes the first replacement of the signing key. It never changes.
 
@@ -95,7 +95,17 @@ Both halves use the same derivation path. The two key pairs differ only because 
 | First  | 1-12  | Anchor key  | Determines the wallet account address; authorizes the first rotation |
 | Second | 13-24 | Signing key | Signs ordinary outgoing messages; is replaced on rotation  |
 
-The two halves **MUST** be generated independently, from a cryptographically secure random source. The signing half **MUST NOT** be derived from the anchor half.
+The anchor half **MUST** be generated from a cryptographically secure random source.
+
+A Rotation mnemonic has exactly two permitted forms:
+
+1. **Initial form** — words 13-24 repeat words 1-12 word for word. The signing key of the account has never been replaced, and the anchor key is also the current signing key.
+
+2. **Rotated form** — words 13-24 are a 12-word Multichain mnemonic generated from a cryptographically secure random source, independently of words 1-12 and of every earlier signing half.
+
+No other relationship between the two halves is permitted. In particular, a signing half **MUST NOT** be computed from the anchor half, or from an earlier signing half, by hashing, re-indexing or any other deterministic transformation.
+
+Every rotation **MUST** produce a signing half of the rotated form, and **MUST NOT** set the signing half back to the anchor half.
 
 Unlike the schemes in sections 3.1 and 3.2, a Rotation mnemonic does not describe a single fixed key: its signing half changes over time while the account address stays the same. Section 13 defines the wallet account behavior that makes this possible.
 
